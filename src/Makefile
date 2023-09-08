@@ -5,3 +5,12 @@ sspin1: sspin1.o
 	c++ -I/usr/include/hdf5/serial sspin1.o -o sspin1 -g -O3 -Wall -Wextra -Werror -static \
 	-L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 \
 	-lpthread -lsz -lz -ldl -lm -laec -Wl,-rpath -Wl,/usr/lib/x86_64-linux-gnu/hdf5/serial
+
+all: test
+test.o: test.cpp
+	c++ -I/usr/include/hdf5/serial -c test.cpp -g -O3
+test: test.o
+	c++ test.o -o test -g -O3 \
+	-L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 \
+	-lpthread -lsz -lz -ldl -lm -laec
+
