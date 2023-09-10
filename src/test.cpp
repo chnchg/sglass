@@ -10,7 +10,7 @@
 
 
 using namespace std;
-#define L 10
+#define L 32
 #define SIZE L *L
 
 void initialize(double spins[L][L]);
@@ -22,6 +22,17 @@ vector<double> E;
 vector<double> M;
 vector<double> C;
 vector<double> X;
+vector<double> T;
+/// Save a 1D array of double
+/// @param loc Where to save
+/// @param name Name of the data array
+/// @param val Storage of the array of data
+void save_1d_array(H5::H5Location & loc,std::string const & name,std::vector<double> const & val)
+{
+    hsize_t l = val.size();
+    H5::DataSet ds(loc.createDataSet(name,H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+    ds.write(val.data(),H5::PredType::NATIVE_DOUBLE);
+}
 
 std::uniform_real_distribution<double> prob;
 std::mt19937 rng;
@@ -48,7 +59,8 @@ int main()
     double m_tem;
     double m2_tem;
     double e2_tem;
-    int N; // number of iteration
+    int eq_step; // number of warmup
+    int mc_step; // number of frame
 
     tmax = 5.0;
     tmin = 0.1;
@@ -62,7 +74,8 @@ int main()
     // get_neighbors(neighs);              // Get neighbour table
     energy = calcenergy(spins); // Compute initial energy
     
-    N = 1e4;
+    eq_step = 1e4; 
+    mc_step = 1e5;
     // cout<< energy << endl;
 
 
@@ -73,12 +86,12 @@ int main()
         e2_tem = 0;
         m_tem = 0;
         m2_tem = 0;
-        for (i = 0; i < N; i++)
+        for (i = 0; i < eq_step; i++)
         {
             montecarlo(spins,tstar);
         }
         // frame
-        for (i = 0; i < N; i++)
+        for (i = 0; i < mc_step; i++)
         {
             montecarlo(spins,tstar);
             energy = calcenergy(spins);
@@ -90,11 +103,74 @@ int main()
             m2_tem += mag*mag;
         }
 
-        E.push_back(e_tem/N);
-        M.push_back(m_tem/N);
-        C.push_back(((e2_tem-e_tem*e_tem)/N)/tstar/tstar);
-        X.push_back((m2_tem-m_tem*m_tem/N)/N/tstar);
+        E.push_back(e_tem/mc_step);
+        M.push_back(m_tem/mc_step);
+        C.push_back(((e2_tem/mc_step-e_tem/mc_step*e_tem/mc_step))/tstar/tstar);
+        X.push_back((m2_tem/mc_step-m_tem/mc_step*m_tem/mc_step)/tstar/tstar);
+        T.push_back(tstar);
 
+        cout << tstar << endl;
+    }
+    for (tstar = tcrit_up; tstar > tcrit_down; tstar -= deltat_crit)
+    {
+        // warmup
+        e_tem = 0;
+        e2_tem = 0;
+        m_tem = 0;
+        m2_tem = 0;
+        for (i = 0; i < eq_step; i++)
+        {
+            montecarlo(spins,tstar);
+        }
+        // frame
+        for (i = 0; i < mc_step; i++)
+        {
+            montecarlo(spins,tstar);
+            energy = calcenergy(spins);
+            mag = calcmag(spins);
+
+            e_tem += energy;
+            e2_tem += energy*energy;
+            m_tem += mag;
+            m2_tem += mag*mag;
+        }
+
+        E.push_back(e_tem/mc_step);
+        M.push_back(m_tem/mc_step);
+        C.push_back(((e2_tem-e_tem*e_tem)/mc_step)/tstar/tstar);
+        X.push_back((m2_tem-m_tem*m_tem/mc_step)/mc_step/tstar);
+        T.push_back(tstar);
+        cout << tstar << endl;
+    }
+    for (tstar = tcrit_down; tstar > tmin; tstar -= deltat)
+    {
+        // warmup
+        e_tem = 0;
+        e2_tem = 0;
+        m_tem = 0;
+        m2_tem = 0;
+        for (i = 0; i < eq_step; i++)
+        {
+            montecarlo(spins,tstar);
+        }
+        // frame
+        for (i = 0; i < mc_step; i++)
+        {
+            montecarlo(spins,tstar);
+            energy = calcenergy(spins);
+            mag = calcmag(spins);
+
+            e_tem += energy;
+            e2_tem += energy*energy;
+            m_tem += mag;
+            m2_tem += mag*mag;
+        }
+
+        E.push_back(e_tem/mc_step);
+        M.push_back(m_tem/mc_step);
+        C.push_back((e2_tem/mc_step-e_tem/mc_step*e_tem/mc_step)/tstar/tstar);
+        X.push_back((m2_tem/mc_step-m_tem/mc_step*m_tem/mc_step)/tstar/tstar);
+        T.push_back(tstar);
         cout << tstar << endl;
     }
 
@@ -122,12 +198,12 @@ int main()
 
     newFile.open("C.txt", ios::out);
 
-    for(auto &v : X){
+    for(auto &v : T){
         newFile << v << " ";
     }
     newFile.close();
 
-    newFile.open("X.txt", ios::out);
+    newFile.open("T.txt", ios::out);
 
     return 0;
 }
@@ -137,7 +213,7 @@ void initialize(double spins[L][L])
     int i, j;
 
     // Init spins with a random distribution
-    for (i = 0; i < L * L; i++)
+    for (i = 0; i < L;i++)
     {
         for (j=0;j<L;j++){
             spins[i][j] = 2*(rand()%2)-1; // Generate numbers
@@ -158,7 +234,7 @@ double calcenergy(double spins[L][L])
     // For every spin,
     for (i = 0; i < L; i++){
         for(j=0;j<L;j++){
-            neighboresum = spins[(i+1)%L][j]+spins[(i-1)%L][j]+spins[i][(j+1)%L]+spins[i][(j-1)%L];
+            neighboresum = spins[(i+1)%L][j]+spins[(i+L-1)%L][j]+spins[i][(j+1)%L]+spins[i][(j+L-1)%L];
         // And compute the energy change
           en = en + spins[i][j] +spins[i][j]*neighboresum;
 
@@ -201,7 +277,7 @@ void montecarlo(double spins[L][L],double T){
             // cout<<"i posotion = "<<ran_posi;
             // cout<<" j posotion = "<<ran_posj;
             // cout<<endl;
-            neighborsum = spins[(ran_posi+1)%L][ran_posj]+spins[(ran_posi-1)%L][ran_posj]+spins[ran_posi][(ran_posj+1)%L]+spins[ran_posi][(ran_posj-1)%L];
+            neighborsum = spins[(ran_posi+1)%L][ran_posj]+spins[(ran_posi+L-1)%L][ran_posj]+spins[ran_posi][(ran_posj+1)%L]+spins[ran_posi][(ran_posj+L-1)%L];
             cost= 2*spins[ran_posi][ran_posj]*neighborsum;
 	    // dE = spin[i]*heff*2
             if(cost<0){
@@ -233,28 +309,28 @@ void montecarlo(double spins[L][L],double T){
 //     }
 // }
 
-void flip_spin(double spins[SIZE], int neighs[SIZE][4], double h[5], double& energy, mt19937& gen, uniform_real_distribution<double>& ran_u, uniform_int_distribution<int>& ran_pos,double T){
-    int index = ran_pos(gen); //Get a random position to flip
-    int i;
-    //Compute the sum of neighbours
-    int sum_neigh = spins[neighs[index][0]] + spins[neighs[index][1]] + spins[neighs[index][2]] + spins[neighs[index][3]];
-    //Use this to get the energy change (depending on the value of my spin)
-    int change = spins[index] ? 2.0 * (sum_neigh) - 4.0 : 4.0 - 2.0 * (sum_neigh);
+// void flip_spin(double spins[SIZE], int neighs[SIZE][4], double h[5], double& energy, mt19937& gen, uniform_real_distribution<double>& ran_u, uniform_int_distribution<int>& ran_pos,double T){
+//     int index = ran_pos(gen); //Get a random position to flip
+//     int i;
+//     //Compute the sum of neighbours
+//     int sum_neigh = spins[neighs[index][0]] + spins[neighs[index][1]] + spins[neighs[index][2]] + spins[neighs[index][3]];
+//     //Use this to get the energy change (depending on the value of my spin)
+//     int change = spins[index] ? 2.0 * (sum_neigh) - 4.0 : 4.0 - 2.0 * (sum_neigh);
 
-    for (i=-4; i <= 4; i += 2)
-	{
-		h[(i+4)/2] =  min(1.0, exp(- 2.0 * i / T));
-	}
-    //Apply Metropolis skim
-    if (ran_u(gen) < h[(change+4)/2])
-    {
-        spins[index] = !spins[index];
-        energy += (2.0*change)/(1.0*SIZE);
-        //cout << change << "  " << (2.0*change)/(1.0*SIZE) << "  " << energy << endl;
-    }
+//     for (i=-4; i <= 4; i += 2)
+// 	{
+// 		h[(i+4)/2] =  min(1.0, exp(- 2.0 * i / T));
+// 	}
+//     //Apply Metropolis skim
+//     if (ran_u(gen) < h[(change+4)/2])
+//     {
+//         spins[index] = !spins[index];
+//         energy += (2.0*change)/(1.0*SIZE);
+//         //cout << change << "  " << (2.0*change)/(1.0*SIZE) << "  " << energy << endl;
+//     }
 
-    return;
-}
+//     return;
+// }
 
 // void flip_spin(bool spins[SIZE], int neighs[SIZE][4], double h[5], double &energy, mt19937 &gen, uniform_real_distribution<double> &ran_u, uniform_int_distribution<int> &ran_pos, double &T)
 // {

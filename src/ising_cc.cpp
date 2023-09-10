@@ -1,19 +1,29 @@
 #include <random>
 #include <cmath>
 #include <iostream>
-
+#include <fstream>
+#include <vector>
+#include <algorithm>
 // Calculation parameters
 const int warm_up_time = 10000;
 const int calculation_time = 100000;
 
 // System parameters
-const int linear_size = 10; // Linear size
+const int linear_size = 16; // Linear size
 double beta; // Inverse temperature
 double field; // Magnetic field
 
 // State
 const int num_spins = linear_size*linear_size;
 int spins[num_spins];
+double correlation[num_spins*num_spins];
+
+//store parameters
+std::vector<double> E;
+std::vector<double> M;
+std::vector<double> C;
+std::vector<double> T;
+
 std::mt19937 rng(1234);
 
 // Auxiliary
@@ -74,13 +84,15 @@ void warm_up(int time)
 	for (int t = 0; t < time; t++) mc_step();
 }
 
+
 void calc_mean_statistics(
 	int time,
 	double &energy,
 	double &energy_sqr,
 	double &magnetization,
 	double &magnetization_sqr,
-	double &energy_magnetization
+	double &energy_magnetization,
+	double &Cv
 ) {
 	double acc_energy = 0;
 	double acc_energy_sqr = 0;
@@ -102,22 +114,109 @@ void calc_mean_statistics(
 	magnetization = acc_magnetization / time;
 	magnetization_sqr = acc_magnetization_sqr / time;
 	energy_magnetization = acc_energy_magnetization / time;
+	Cv=energy_sqr-energy*energy;
+}
+//choose random spins and calculate cij
+void calc_cij(){
+	int i,j,k,l,m=0;
+
+	int random_site=uniform(rng)*1023;
+	bool selected[1024];
+	int num_selected =0;
+	//choose random spins
+	while(num_selected<64){
+		int i =random_site;
+		if(selected[i]= true){
+			continue;
+			selected[i]= true;
+			num_selected=num_selected+1;
+		}
+	}
+	warm_up(warm_up_time);
+	for (int m = 0; m< calculation_time; m++) {
+		mc_step();
+		for (i=0;i<num_spins;i++){
+			if(selected[i]= true){
+
+				k=k+1;
+				for(j=0;j<num_spins;j++){
+					if(selected[j]= true){
+
+						l=l+1;
+						correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
+					}
+				}
+			}
+		}
+		if (m/100==0){
+			std::cout<< m << ' ';
+		}
+	}
 }
 
 int main()
 {
+	int i,j;
 	field = 0.;
 	initialize();
-	for (double temp = 5; temp > 1; temp *= .9) {
+	for (double temp = 2.5; temp > 1.5; temp -= 0.05) {
 		beta = 1./temp;
 		warm_up(warm_up_time);
-		double energy, energy_sqr, magnetization, magnetization_sqr, energy_magnetization;
+		double energy, energy_sqr, magnetization, magnetization_sqr, energy_magnetization,Cv;
 		calc_mean_statistics(
 			calculation_time, energy, energy_sqr, magnetization,
-			magnetization_sqr, energy_magnetization
+			magnetization_sqr, energy_magnetization,Cv
 		);
-		std::cout << temp << ' ' << energy << ' ' << energy_sqr << ' ';
-		std::cout << magnetization << ' ' << magnetization_sqr << ' ';
-		std::cout << energy_magnetization << std::endl;
+		E.push_back(energy);
+        M.push_back(magnetization);
+        C.push_back(energy_sqr-energy*energy);
+        T.push_back(temp);
+		std::cout << temp << ' ' << energy << ' ' << Cv << ' '<< std::endl;
+		// std::cout << magnetization << ' ' << magnetization_sqr << ' ';
+		// std::cout << energy_magnetization <<' '<< Cv << std::endl;
 	}
+	// save data
+	std::fstream newFile;
+	newFile.open("M.txt", std::ios::out);
+    for(auto &v : M){
+        newFile << v << " ";
+    }
+    newFile.close();
+
+    newFile.open("E.txt", std::ios::out);
+    for(auto &v : E){
+        newFile << v << " ";
+    }
+    newFile.close();
+
+	newFile.open("C.txt", std::ios::out);
+    for(auto &v : C){
+        newFile << v << " ";
+    }
+    newFile.close();
+
+    newFile.open("T.txt", std::ios::out);
+    for(auto &v : T){
+        newFile << v << " ";
+    }
+    newFile.close();
+
+	std::vector<double>::iterator max_c;
+    
+    max_c = std::max_element(C.begin(), C.end());
+    std::cout << "Max capacity: " << *max_c << "\n";
+    
+
+
+	beta=1.0/2.35;
+	calc_cij();
+
+	for (int i = 0; i < num_spins*num_spins; i++) {
+        std::cout << correlation[i] << " ";
+		if(i==num_spins){
+			std::cout << std::endl;
+		}
+    }
+
+	return 0;
 }
