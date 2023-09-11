@@ -155,7 +155,7 @@ void calc_cij(){
 					if(selected[j]== true){
 						// std::cout<<"spin j is true "<<j<<std::endl;
 						l=l+1;
-						correlation[i*num_spins+j]=correlation[i*num_spins+j]+spins[i]*spins[j];
+						correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
 					}
 				}
 			}
