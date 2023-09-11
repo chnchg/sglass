@@ -6,10 +6,10 @@
 #include <algorithm>
 // Calculation parameters
 const int warm_up_time = 10000;
-const int calculation_time = 100000;
+const int calculation_time = 10000;
 
 // System parameters
-const int linear_size = 16; // Linear size
+const int linear_size = 32; // Linear size
 double beta; // Inverse temperature
 double field; // Magnetic field
 
@@ -17,6 +17,7 @@ double field; // Magnetic field
 const int num_spins = linear_size*linear_size;
 int spins[num_spins];
 double correlation[num_spins*num_spins];
+bool selected[num_spins];
 
 //store parameters
 std::vector<double> E;
@@ -118,38 +119,49 @@ void calc_mean_statistics(
 }
 //choose random spins and calculate cij
 void calc_cij(){
-	int i,j,k,l,m=0;
+	int i,j,k=0,l=0,m=0;
 
-	int random_site=uniform(rng)*1023;
-	bool selected[1024];
+	// int random_site=uniform(rng)*1023;
+	// bool selected[1024];
 	int num_selected =0;
 	//choose random spins
-	while(num_selected<64){
-		int i =random_site;
-		if(selected[i]= true){
-			continue;
-			selected[i]= true;
+	std::cout<<"Calculating correlation"<<std::endl;
+	while(num_selected<8){
+		int random_site=uniform(rng)*(num_spins-1);
+		if(selected[random_site]== false){
+			selected[random_site]= true;
 			num_selected=num_selected+1;
+			// std::cout<<"selected position is "<<random_site<<std::endl;
+			std::cout<<"Number selected "<<num_selected<<std::endl;
 		}
 	}
+	std::cout<<"warm up"<<std::endl;
 	warm_up(warm_up_time);
-	for (int m = 0; m< calculation_time; m++) {
+	std::cout<<"end warm up"<<std::endl;
+	std::cout<<"mc step"<<std::endl;
+	for (int m = 0; m< 1000; m++) {
 		mc_step();
+		if (m%100==0){
+			std::cout<<"calculating correlation for m="<<m<<std::endl;
+		}
+		
 		for (i=0;i<num_spins;i++){
-			if(selected[i]= true){
-
+			// std::cout<<"spin "<<i<<std::endl;
+			if(selected[i]== true){
+				// std::cout<<"spin i is true "<<i<<std::endl;
 				k=k+1;
 				for(j=0;j<num_spins;j++){
-					if(selected[j]= true){
-
+					// std::cout<<"spin "<<j<<std::endl;
+					if(selected[j]== true){
+						// std::cout<<"spin j is true "<<j<<std::endl;
 						l=l+1;
-						correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
+						correlation[i*num_spins+j]=correlation[i*num_spins+j]+spins[i]*spins[j];
 					}
 				}
 			}
 		}
-		if (m/100==0){
-			std::cout<< m << ' ';
+		if (m%100==0){
+			std::cout<<"calculating end, m="<< m <<std::endl;
 		}
 	}
 }
@@ -159,7 +171,7 @@ int main()
 	int i,j;
 	field = 0.;
 	initialize();
-	for (double temp = 2.5; temp > 1.5; temp -= 0.05) {
+	for (double temp = 2.5; temp > 1.5; temp -= 0.01) {
 		beta = 1./temp;
 		warm_up(warm_up_time);
 		double energy, energy_sqr, magnetization, magnetization_sqr, energy_magnetization,Cv;
@@ -208,15 +220,15 @@ int main()
     
 
 
-	beta=1.0/2.35;
-	calc_cij();
+	// beta=1.0/2.35;
+	// calc_cij();
 
-	for (int i = 0; i < num_spins*num_spins; i++) {
-        std::cout << correlation[i] << " ";
-		if(i==num_spins){
-			std::cout << std::endl;
-		}
-    }
+	// for (int i = 0; i < num_spins*num_spins; i++) {
+    //     std::cout << correlation[i] << " ";
+	// 	if(i==num_spins){
+	// 		std::cout << std::endl;
+	// 	}
+    // }
 
 	return 0;
 }
