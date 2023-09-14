@@ -3,10 +3,15 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <H5Cpp.h>
 #include <algorithm>
+#include <string>
+#include <exception>
+#include <memory>
+
 // Calculation parameters
 const int warm_up_time = 10000;
-const int calculation_time = 10000;
+const int calculation_time = 100000;
 
 // System parameters
 const int linear_size = 32; // Linear size
@@ -21,6 +26,7 @@ bool selected[num_spins];
 
 //store parameters
 std::vector<double> E;
+std::vector<double> E_squr;
 std::vector<double> M;
 std::vector<double> C;
 std::vector<double> T;
@@ -118,53 +124,53 @@ void calc_mean_statistics(
 	Cv=energy_sqr-energy*energy;
 }
 //choose random spins and calculate cij
-void calc_cij(){
-	int i,j,k=0,l=0,m=0;
+// void calc_cij(){
+// 	int i,j,k=0,l=0,m=0;
 
-	// int random_site=uniform(rng)*1023;
-	// bool selected[1024];
-	int num_selected =0;
-	//choose random spins
-	std::cout<<"Calculating correlation"<<std::endl;
-	while(num_selected<8){
-		int random_site=uniform(rng)*(num_spins-1);
-		if(selected[random_site]== false){
-			selected[random_site]= true;
-			num_selected=num_selected+1;
-			// std::cout<<"selected position is "<<random_site<<std::endl;
-			std::cout<<"Number selected "<<num_selected<<std::endl;
-		}
-	}
-	std::cout<<"warm up"<<std::endl;
-	warm_up(warm_up_time);
-	std::cout<<"end warm up"<<std::endl;
-	std::cout<<"mc step"<<std::endl;
-	for (int m = 0; m< 1000; m++) {
-		mc_step();
-		if (m%100==0){
-			std::cout<<"calculating correlation for m="<<m<<std::endl;
-		}
+// 	// int random_site=uniform(rng)*1023;
+// 	// bool selected[1024];
+// 	int num_selected =0;
+// 	//choose random spins
+// 	std::cout<<"Calculating correlation"<<std::endl;
+// 	while(num_selected<8){
+// 		int random_site=uniform(rng)*(num_spins-1);
+// 		if(selected[random_site]== false){
+// 			selected[random_site]= true;
+// 			num_selected=num_selected+1;
+// 			// std::cout<<"selected position is "<<random_site<<std::endl;
+// 			std::cout<<"Number selected "<<num_selected<<std::endl;
+// 		}
+// 	}
+// 	std::cout<<"warm up"<<std::endl;
+// 	warm_up(warm_up_time);
+// 	std::cout<<"end warm up"<<std::endl;
+// 	std::cout<<"mc step"<<std::endl;
+// 	for (int m = 0; m< calculation_time; m++) {
+// 		mc_step();
+// 		if (m%100==0){
+// 			std::cout<<"calculating correlation for m="<<m<<std::endl;
+// 		}
 		
-		for (i=0;i<num_spins;i++){
-			// std::cout<<"spin "<<i<<std::endl;
-			if(selected[i]== true){
-				// std::cout<<"spin i is true "<<i<<std::endl;
-				k=k+1;
-				for(j=0;j<num_spins;j++){
-					// std::cout<<"spin "<<j<<std::endl;
-					if(selected[j]== true){
-						// std::cout<<"spin j is true "<<j<<std::endl;
-						l=l+1;
-						correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
-					}
-				}
-			}
-		}
-		if (m%100==0){
-			std::cout<<"calculating end, m="<< m <<std::endl;
-		}
-	}
-}
+// 		for (i=0;i<num_spins;i++){
+// 			// std::cout<<"spin "<<i<<std::endl;
+// 			if(selected[i]== true){
+// 				// std::cout<<"spin i is true "<<i<<std::endl;
+// 				k=k+1;
+// 				for(j=0;j<num_spins;j++){
+// 					// std::cout<<"spin "<<j<<std::endl;
+// 					if(selected[j]== true){
+// 						// std::cout<<"spin j is true "<<j<<std::endl;
+// 						correlation[l*num_spins+k]=correlation[l*num_spins+k]+spins[i]*spins[j];
+// 						l=l+1;
+// 					}
+// 				}
+// 			}
+// 		}
+// 		if (m%100==0){
+// 			std::cout<<"calculating end, m="<< m <<std::endl;
+// 		}
+// 	}
+// }
 
 int main()
 {
@@ -180,6 +186,7 @@ int main()
 			magnetization_sqr, energy_magnetization,Cv
 		);
 		E.push_back(energy);
+		E_squr.push_back(energy_sqr);
         M.push_back(magnetization);
         C.push_back(energy_sqr-energy*energy);
         T.push_back(temp);
@@ -188,35 +195,53 @@ int main()
 		// std::cout << energy_magnetization <<' '<< Cv << std::endl;
 	}
 	// save data
-	std::fstream newFile;
-	newFile.open("M.txt", std::ios::out);
-    for(auto &v : M){
-        newFile << v << " ";
-    }
-    newFile.close();
+	std::string fn = "result_file.h5" ;
+	
+	H5::H5File file(fn,H5F_ACC_TRUNC);
+	hsize_t l = C.size();
+    H5::DataSet dsC= H5::DataSet(file.createDataSet("C",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+	dsC.write(C.data(),H5::PredType::NATIVE_DOUBLE);
 
-    newFile.open("E.txt", std::ios::out);
-    for(auto &v : E){
-        newFile << v << " ";
-    }
-    newFile.close();
+	hsize_t T_size = T.size();
 
-	newFile.open("C.txt", std::ios::out);
-    for(auto &v : C){
-        newFile << v << " ";
-    }
-    newFile.close();
+    H5::DataSet dsT= H5::DataSet(file.createDataSet("T",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&T_size)));
+	dsT.write(T.data(),H5::PredType::NATIVE_DOUBLE);
+	
+	// hsize_t E_size = E.size();
 
-    newFile.open("T.txt", std::ios::out);
-    for(auto &v : T){
-        newFile << v << " ";
-    }
-    newFile.close();
+	// H5::DataSet dsE= H5::DataSet(file.createDataSet("E",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&E_size)));
+	// dsE.write(E.data(),H5::PredType::NATIVE_DOUBLE);
 
-	std::vector<double>::iterator max_c;
+
+	// std::fstream newFile;
+	// newFile.open("M.txt", std::ios::out);
+    // for(auto &v : M){
+    //     newFile << v << " ";
+    // }
+    // newFile.close();
+
+    // newFile.open("E.txt", std::ios::out);
+    // for(auto &v : E){
+    //     newFile << v << " ";
+    // }
+    // newFile.close();
+
+	// newFile.open("C.txt", std::ios::out);
+    // for(auto &v : C){
+    //     newFile << v << " ";
+    // }
+    // newFile.close();
+
+    // newFile.open("T.txt", std::ios::out);
+    // for(auto &v : T){
+    //     newFile << v << " ";
+    // }
+    // newFile.close();
+
+	// std::vector<double>::iterator max_c;
     
-    max_c = std::max_element(C.begin(), C.end());
-    std::cout << "Max capacity: " << *max_c << "\n";
+    // max_c = std::max_element(C.begin(), C.end());
+    // std::cout << "Max capacity: " << *max_c << "\n";
     
 
 
