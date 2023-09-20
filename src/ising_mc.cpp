@@ -11,7 +11,7 @@
 
 // Calculation parameters
 const int warm_up_time = 10000;
-const int calculation_time = 10000;
+const int calculation_time = 100000;
 const int choosen_num=64;
 // System parameters
 const int linear_size = 32; // Linear size
@@ -35,6 +35,7 @@ std::vector<double> T;
 
 std::vector<double> aC_tem(choosen_num*choosen_num);  //temporary correlation 
 std::vector<double> aC; //correlation
+std::vector<int> choosen_index;
 std::vector<double> mag(choosen_num); //magnitization for indiviual spin
 
 
@@ -97,11 +98,12 @@ void calc_cij_mag(){
 	int num_selected =0;
 	//choose random spins
 	while(num_selected<choosen_num){
-		int random_site=uniform(rng)*(num_spins-1);
+		int random_site=uniform(rng)*(num_spins);
 		if(selected[random_site]== false){
 			selected[random_site]= true;
 			num_selected=num_selected+1;
-			std::cout<<"selected position is "<<random_site<<std::endl;
+			choosen_index.push_back(random_site);
+			// std::cout<<"selected position is "<<random_site<<std::endl;
 		}
 	}
 	warm_up(warm_up_time);
@@ -112,28 +114,34 @@ void calc_cij_mag(){
 		if (m%1000==0){
 			std::cout<<"calculating correlation for m="<<m<<std::endl;
 		}
-		k=0;
-		for (i=0;i<num_spins;i++){
-			// std::cout<<"spin "<<i<<std::endl;
-			if(selected[i]== true){
-				// std::cout<<"spin i is true "<<i<<std::endl;
-				mag[k]=mag[k]+spins[i]; //choosen mag
-				// std::cout<<"i = "<< i <<std::endl;
-				l=0;
-				for(j=0;j<num_spins;j++){
-					// std::cout<<"spin "<<j<<std::endl;
-					if(selected[j]== true){
-						// std::cout<<"spin j is true "<<j<<std::endl;
-						
-						// correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
-						aC_tem[k*choosen_num+l]=aC_tem[k*choosen_num+l]+spins[i]*spins[j];
-						l=l+1;
-						// std::cout<<"l = "<< l <<std::endl;
-					}
-				}
-				k=k+1;
+		for(i=0;i<choosen_num;i++){
+			mag[i]=mag[i]+spins[choosen_index[i]];
+			for(j=0;j<choosen_num;j++){
+				aC_tem[i*choosen_num+j]=aC_tem[i*choosen_num+j]+spins[choosen_index[i]]*spins[choosen_index[j]];
 			}
 		}
+		// k=0;
+		// for (i=0;i<num_spins;i++){
+		// 	// std::cout<<"spin "<<i<<std::endl;
+		// 	if(selected[i]== true){
+		// 		// std::cout<<"spin i is true "<<i<<std::endl;
+		// 		mag[k]=mag[k]+spins[i]; //choosen mag
+		// 		// std::cout<<"i = "<< i <<std::endl;
+		// 		l=0;
+		// 		for(j=0;j<num_spins;j++){
+		// 			// std::cout<<"spin "<<j<<std::endl;
+		// 			if(selected[j]== true){
+		// 				// std::cout<<"spin j is true "<<j<<std::endl;
+						
+		// 				// correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
+		// 				aC_tem[k*choosen_num+l]=aC_tem[k*choosen_num+l]+spins[i]*spins[j];
+		// 				l=l+1;
+		// 				// std::cout<<"l = "<< l <<std::endl;
+		// 			}
+		// 		}
+		// 		k=k+1;
+		// 	}
+		// }
 		if (m%1000==0){
 			std::cout<<"calculating end, m="<< m <<std::endl;
 		}
@@ -155,10 +163,12 @@ int main()
 
 	for (j=0;j<choosen_num;j++){
 		for(i=0;i<j;i++){
-			aC.push_back(aC_tem[j*choosen_num+i]);
+			aC.push_back(aC_tem[j*choosen_num+i]/calculation_time);
 		}
 	}
-
+	for (i=0;i<choosen_num;i++){
+		mag[i]=mag[i]/calculation_time;
+	}
 	std::cout<<std::endl<<"vector aC"<<std::endl;
 	for (auto &v : aC) {
         std::cout << v << " ";
@@ -187,15 +197,15 @@ int main()
 	H5::H5File file(fn,H5F_ACC_TRUNC);
 	// std::unique_ptr<H5::H5File> f;
 	// H5::Group g(f->createGroup("result1"));
-	H5::Group g(file.createGroup("result1"));
+	// H5::Group g(file.createGroup("result1"));
 
 	hsize_t l = aC.size();
-    H5::DataSet ds= H5::DataSet(file.createDataSet("aC",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+    H5::DataSet ds= H5::DataSet(file.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
 	ds.write(aC.data(),H5::PredType::NATIVE_DOUBLE);
 
 
 	l = mag.size();
-    ds= H5::DataSet(file.createDataSet("mag",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+    ds= H5::DataSet(file.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
 	ds.write(mag.data(),H5::PredType::NATIVE_DOUBLE);
 
 
