@@ -1,5 +1,7 @@
 sspin1
 test
 ising_cc
+ising_mc
 *.txt
 *.o
+*.h5

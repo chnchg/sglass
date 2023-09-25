@@ -12,7 +12,8 @@
 // Calculation parameters
 const int warm_up_time = 10000;
 const int calculation_time = 10000;
-const int choosen_num=64;
+const int chosen_num = 64;
+const int pair_num = chosen_num*(chosen_num-1)/2;
 // System parameters
 const int linear_size = 32; // Linear size
 double beta; // Inverse temperature
@@ -21,10 +22,6 @@ double field; // Magnetic field
 // State
 const int num_spins = linear_size*linear_size;
 int spins[num_spins];
-// double correlation[num_spins*num_spins];
-
-bool selected[num_spins];
-
 
 //store parameters
 std::vector<double> E;
@@ -33,21 +30,12 @@ std::vector<double> M;
 std::vector<double> C;
 std::vector<double> T;
 
-std::vector<double> random_aC_tem(choosen_num*choosen_num);  //temporary correlation 
-std::vector<double> random_aC; //correlation
-std::vector<double> uniform_aC_tem(choosen_num*choosen_num);
-std::vector<double> uniform_aC;
-std::vector<double> square_aC_tem(choosen_num*choosen_num);
-std::vector<double> square_aC;
-
-std::vector<int> random_choosen_index;
-std::vector<int> uniform_choosen_index;
-std::vector<int> square_choosen_index;
-
-std::vector<double> random_mag(choosen_num); //magnitization for random indiviual spin
-std::vector<double> uniform_mag(choosen_num); 
-std::vector<double> square_mag(choosen_num); 
-
+struct Selection {
+	std::vector<int> chosen_indices;
+	std::vector<double> mag;
+	std::vector<double> aC;
+};
+std::vector<Selection> selection_list;
 
 std::mt19937 rng(1234);
 
@@ -102,35 +90,40 @@ void warm_up(int time)
 void calc_cij_mag(){
 	int i,j,k=0,l=0,m=0;
 
-	// int random_site=uniform(rng)*1023;
-	// bool selected[1024];
-	int num_selected =0;
-	//choose random spins
-	while(num_selected<choosen_num){
-		int random_site=uniform(rng)*(num_spins);
-		if(selected[random_site]== false){
-			selected[random_site]= true;
-			num_selected=num_selected+1;
-			random_choosen_index.push_back(random_site);
-			// std::cout<<"selected position is "<<random_site<<std::endl;
-		}
-	}
-	//uniformly chhose
-	num_selected=0;
-	uniform_choosen_index.push_back(0);
-	while(num_selected<choosen_num){
-		num_selected=num_selected+1;
-		uniform_choosen_index.push_back(num_selected*4-1);
-		
-	}
+	Selection square_selection;
 	//square choose
-	square_choosen_index.push_back(0);
-	for(i=0;i<sqrt(choosen_num);i++){
-		for(j=0;j<sqrt(choosen_num);j++){
-			square_choosen_index.push_back(i*linear_size+j);
-			std::cout<<"square_selected position is "<<i*linear_size+j<<std::endl;
-		}
+	for(i=0;i<sqrt(chosen_num);i++)	for(j=0;j<sqrt(chosen_num);j++) {
+		square_selection.chosen_indices.push_back(i*linear_size+j);
+		std::cout<<"square_selected position is "<<i*linear_size+j<<std::endl;
+	}
+	square_selection.mag.resize(chosen_num);
+	square_selection.aC.resize(pair_num);
+	selection_list.push_back(square_selection);
 
+	Selection uniform_selection;
+	//uniformly chosen
+	for (i = 0; i<linear_size; i += 4) for (j = 0; j<linear_size; j += 4) {
+		uniform_selection.chosen_indices.push_back(i*linear_size+j);
+	}
+	uniform_selection.mag.resize(chosen_num);
+	uniform_selection.aC.resize(pair_num);
+	selection_list.push_back(uniform_selection);
+
+	for (int seed = 0; seed<16; seed ++) {
+		Selection random_selection;
+		std::mt19937 rng(seed);
+		bool selected[num_spins];
+		for (auto &s: selected) s = false;
+		while (random_selection.chosen_indices.size()<chosen_num) {
+			int random_site = uniform(rng)*num_spins;
+			if (not selected[random_site]) {
+				selected[random_site] = true;
+				random_selection.chosen_indices.push_back(random_site);
+			}
+		}
+		random_selection.mag.resize(chosen_num);
+		random_selection.aC.resize(pair_num);
+		selection_list.push_back(random_selection);
 	}
 
 	warm_up(warm_up_time);
@@ -142,38 +135,17 @@ void calc_cij_mag(){
 		if (m%1000==0){
 			std::cout<<"calculating correlation for m="<<m<<std::endl;
 		}
-		for(i=0;i<choosen_num;i++){
-			random_mag[i]=random_mag[i]+spins[random_choosen_index[i]];
-			uniform_mag[i]=uniform_mag[i]+spins[uniform_choosen_index[i]];
-			square_mag[i]=square_mag[i]+spins[square_choosen_index[i]];
-			for(j=0;j<choosen_num;j++){
-				random_aC_tem[i*choosen_num+j]=random_aC_tem[i*choosen_num+j]+spins[random_choosen_index[i]]*spins[random_choosen_index[j]];
-				uniform_aC_tem[i*choosen_num+j]=uniform_aC_tem[i*choosen_num+j]+spins[uniform_choosen_index[i]]*spins[uniform_choosen_index[j]];
-				square_aC_tem[i*choosen_num+j]=square_aC_tem[i*choosen_num+j]+spins[square_choosen_index[i]]*spins[square_choosen_index[j]];
+
+		for (auto &selection: selection_list) {
+			int aC_index = 0;
+			for (i = 0; i<chosen_num; i++) {
+				selection.mag[i] += spins[selection.chosen_indices[i]];
+				for (j = 0; j<i; j++) {
+					selection.aC[aC_index++] += spins[selection.chosen_indices[i]]*spins[selection.chosen_indices[j]];
+				}
 			}
 		}
-		// k=0;
-		// for (i=0;i<num_spins;i++){
-		// 	// std::cout<<"spin "<<i<<std::endl;
-		// 	if(selected[i]== true){
-		// 		// std::cout<<"spin i is true "<<i<<std::endl;
-		// 		mag[k]=mag[k]+spins[i]; //choosen mag
-		// 		// std::cout<<"i = "<< i <<std::endl;
-		// 		l=0;
-		// 		for(j=0;j<num_spins;j++){
-		// 			// std::cout<<"spin "<<j<<std::endl;
-		// 			if(selected[j]== true){
-		// 				// std::cout<<"spin j is true "<<j<<std::endl;
-						
-		// 				// correlation[k*num_spins+l]=correlation[k*num_spins+l]+spins[i]*spins[j];
-		// 				aC_tem[k*choosen_num+l]=aC_tem[k*choosen_num+l]+spins[i]*spins[j];
-		// 				l=l+1;
-		// 				// std::cout<<"l = "<< l <<std::endl;
-		// 			}
-		// 		}
-		// 		k=k+1;
-		// 	}
-		// }
+
 		if (m%1000==0){
 			std::cout<<"calculating end, m="<< m <<std::endl;
 		}
@@ -181,15 +153,9 @@ void calc_cij_mag(){
 }
 void normalize(){
 	int i,j;
-	for (j=0;j<choosen_num;j++){
-		random_mag[j]=random_mag[j]/calculation_time;
-		uniform_mag[j]=uniform_mag[j]/calculation_time;
-		square_mag[j]=square_mag[j]/calculation_time;
-		for(i=0;i<j;i++){
-			random_aC.push_back(random_aC_tem[j*choosen_num+i]/calculation_time);
-			uniform_aC.push_back(uniform_aC_tem[j*choosen_num+i]/calculation_time);
-			square_aC.push_back(square_aC_tem[j*choosen_num+i]/calculation_time);
-		}
+	for (auto &selection: selection_list) {
+		for (auto & m: selection.mag) m /= calculation_time;
+		for (auto & aC: selection.aC) aC /= calculation_time;
 	}
 }
 
@@ -204,64 +170,21 @@ int main()
 	calc_cij_mag();
 	normalize();
 
-	// std::cout<<std::endl<<"vector aC"<<std::endl;
-	// for (auto &v : random_aC) {
-    //     std::cout << v << " ";
-    // }
+	for (int i = 0; i<selection_list.size(); i++) {
+		auto &selection = selection_list[i];
+		std::string fn = "selection_mc_" + std::to_string(i) + ".h5";
+		H5::H5File file(fn,H5F_ACC_TRUNC);
 
-	// std::cout<<std::endl<<"vector aC_tem"<<std::endl;
-	// for (int i = 0; i < choosen_num*choosen_num; i++) {
-    //     std::cout << random_aC_tem[i] << " ";
-	// 	if(i%(choosen_num)==choosen_num-1){
-	// 		std::cout << std::endl;
-	// 	}
-    // }
+		hsize_t l = pair_num;
+		H5::DataSet ds = H5::DataSet(file.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(selection.aC.data(),H5::PredType::NATIVE_DOUBLE);
 
-	// for(int i = 0; i < choosen_num; i++){
-	// 	std::cout << random_mag[i] << " ";
-	// }
+		l = chosen_num;
+		ds = H5::DataSet(file.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(selection.mag.data(),H5::PredType::NATIVE_DOUBLE);
 
-	// save data
-	std::string fn = "random_mag_corre_file.h5" ;
-	
-	H5::H5File file1(fn,H5F_ACC_TRUNC);
-
-	hsize_t l = random_aC.size();
-    H5::DataSet ds= H5::DataSet(file1.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(random_aC.data(),H5::PredType::NATIVE_DOUBLE);
-
-
-	l = random_mag.size();
-    ds= H5::DataSet(file1.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(random_mag.data(),H5::PredType::NATIVE_DOUBLE);
-
-	fn = "uniform_mag_corre_file.h5" ;
-	
-	H5::H5File file2(fn,H5F_ACC_TRUNC);
-
-	l = uniform_aC.size();
-    ds= H5::DataSet(file2.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(uniform_aC.data(),H5::PredType::NATIVE_DOUBLE);
-
-
-	l = uniform_mag.size();
-    ds= H5::DataSet(file2.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(uniform_mag.data(),H5::PredType::NATIVE_DOUBLE);
-
-	fn = "square_mag_corre_file.h5" ;
-	
-	H5::H5File file3(fn,H5F_ACC_TRUNC);
-
-	l = square_aC.size();
-    ds= H5::DataSet(file3.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(square_aC.data(),H5::PredType::NATIVE_DOUBLE);
-
-
-	l = square_mag.size();
-    ds= H5::DataSet(file3.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-	ds.write(square_mag.data(),H5::PredType::NATIVE_DOUBLE);
-
-
-
+		ds = H5::DataSet(file.createDataSet("chosen_indices",H5::PredType::NATIVE_INT,H5::DataSpace(1,&l)));
+		ds.write(selection.chosen_indices.data(), H5::PredType::NATIVE_INT);
+	}
 	return 0;
 }
