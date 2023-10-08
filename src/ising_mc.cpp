@@ -8,7 +8,9 @@
 #include <string>
 #include <exception>
 #include <memory>
+#include <sstream>
 
+// using namespace std;
 // Calculation parameters
 const int warm_up_time = 10000;
 const int calculation_time = 10000;
@@ -23,25 +25,35 @@ double field; // Magnetic field
 const int num_spins = linear_size*linear_size;
 int spins[num_spins];
 
-//store parameters
-std::vector<double> E;
-std::vector<double> E_squr;
-std::vector<double> M;
-std::vector<double> C;
-std::vector<double> T;
-
 struct Selection {
 	std::vector<int> chosen_indices;
-	std::vector<double> mag;
-	std::vector<double> aC;
+	std::vector<double> M;
+	std::vector<double> aC;	
 };
 std::vector<Selection> selection_list;
+
+struct Statics{
+	std::vector<int> config;
+	std::vector<double> E;
+	std::vector<double> E2;
+	std::vector<double> ME;
+	std::vector<double> Mtotal;
+};
+Statics Statics_list;
 
 std::mt19937 rng(1234);
 
 // Auxiliary
 std::uniform_real_distribution<> uniform;
 int neighbors[num_spins][4];
+
+std::string format(float f, int digits) {
+    std::ostringstream ss;
+    ss.precision(digits);
+    ss << f;
+    return ss.str();
+}
+
 
 void show_sys() {
 	for (int i = 0; i < linear_size; i ++) {
@@ -85,18 +97,16 @@ void warm_up(int time)
 {
 	for (int t = 0; t < time; t++) mc_step();
 }
-
-//choose random spins and calculate cij
-void calc_cij_mag(){
-	int i,j,k=0,l=0,m=0;
-
+void setup(){
+	int i,j;
 	Selection square_selection;
 	//square choose
 	for(i=0;i<sqrt(chosen_num);i++)	for(j=0;j<sqrt(chosen_num);j++) {
 		square_selection.chosen_indices.push_back(i*linear_size+j);
-		std::cout<<"square_selected position is "<<i*linear_size+j<<std::endl;
+		// std::cout<<"square_selected position is "<<i*linear_size+j<<std::endl;
 	}
-	square_selection.mag.resize(chosen_num);
+	square_selection.M.resize(chosen_num);
+
 	square_selection.aC.resize(pair_num);
 	selection_list.push_back(square_selection);
 
@@ -105,7 +115,7 @@ void calc_cij_mag(){
 	for (i = 0; i<linear_size; i += 4) for (j = 0; j<linear_size; j += 4) {
 		uniform_selection.chosen_indices.push_back(i*linear_size+j);
 	}
-	uniform_selection.mag.resize(chosen_num);
+	uniform_selection.M.resize(chosen_num);
 	uniform_selection.aC.resize(pair_num);
 	selection_list.push_back(uniform_selection);
 
@@ -121,70 +131,154 @@ void calc_cij_mag(){
 				random_selection.chosen_indices.push_back(random_site);
 			}
 		}
-		random_selection.mag.resize(chosen_num);
+		random_selection.M.resize(chosen_num);
 		random_selection.aC.resize(pair_num);
 		selection_list.push_back(random_selection);
 	}
+	Statics_list.Mtotal.resize(1);
+	Statics_list.ME.resize(1);
+	Statics_list.E.resize(1);
+	Statics_list.E2.resize(1);
 
+}
+
+//choose random spins and calculate cij
+void calc_cij_mag(){
+	int i,j,k=0,m=0;
+	double energy;
+	double total_spin = 0;
+	double total_pair_product = 0;
 	warm_up(warm_up_time);
 	std::cout<<"end warm up"<<std::endl;
 	std::cout<<"mc step"<<std::endl;
 
 	for (int m = 0; m< calculation_time; m++) {
 		mc_step();
-		if (m%1000==0){
-			std::cout<<"calculating correlation for m="<<m<<std::endl;
+		// if (m%1000==0){
+		// 	std::cout<<"calculating correlation for m="<<m<<std::endl;
+		// }
+		Statics_list.config.insert(std::end(Statics_list.config), std::begin(spins), std::end(spins));
+		total_spin = 0;
+		total_pair_product = 0;
+		for(i=0;i<num_spins;i++){
+			total_spin += spins[i];
+			total_pair_product += spins[i] * (spins[neighbors[i][0]] + spins[neighbors[i][2]]); // Only consider left and up
 		}
+		energy = -(field * total_spin + total_pair_product);
+		Statics_list.Mtotal[0] += total_spin;
+		Statics_list.E[0] += energy;
+		Statics_list.E2[0] += energy*energy;
+		Statics_list.ME[0] += total_spin*energy;
 
 		for (auto &selection: selection_list) {
+			// selection.config.insert(std::end(selection.config), std::begin(spins), std::end(spins));
 			int aC_index = 0;
+			int aC_index2 = 0;
+
 			for (i = 0; i<chosen_num; i++) {
-				selection.mag[i] += spins[selection.chosen_indices[i]];
+				selection.M[i] += spins[selection.chosen_indices[i]];
 				for (j = 0; j<i; j++) {
 					selection.aC[aC_index++] += spins[selection.chosen_indices[i]]*spins[selection.chosen_indices[j]];
 				}
-			}
-		}
 
-		if (m%1000==0){
-			std::cout<<"calculating end, m="<< m <<std::endl;
+			}
+		// if (m%1000==0){
+		// 	std::cout<<"calculating end, m="<< m <<std::endl;
+		// }
 		}
 	}
 }
 void normalize(){
-	int i,j;
 	for (auto &selection: selection_list) {
-		for (auto & m: selection.mag) m /= calculation_time;
+		for (auto & m: selection.M) m /= calculation_time;
 		for (auto & aC: selection.aC) aC /= calculation_time;
 	}
+	Statics_list.Mtotal[0] /=calculation_time;
+	Statics_list.E[0] /=calculation_time;
+	Statics_list.E2[0]/=calculation_time;
+	Statics_list.ME[0]/=calculation_time;
+}
+void clear_struct(){
+	for (int i = 0; i<selection_list.size(); i++) {
+		for (auto &selection: selection_list) {
+			selection.aC.clear();
+			selection.M.clear();
+			selection.M.resize(chosen_num);
+			selection.aC.resize(pair_num);
+		}
+	}
+	Statics_list.config.clear();
+	Statics_list.E.clear();
+	Statics_list.E2.clear();
+	Statics_list.Mtotal.clear();
+	Statics_list.ME.clear();
+
+	Statics_list.Mtotal.resize(1);
+	Statics_list.ME.resize(1);
+	Statics_list.E.resize(1);
+	Statics_list.E2.resize(1);
+
+
 }
 
 int main()
 {
 	int i,j;
-	field = 0.;
-	double temp=2.34;
-	beta = 1./temp;
+	field = 0.1;
+	double temp=0.05;
+	beta = 0.1;
 
 	initialize();
-	calc_cij_mag();
-	normalize();
+	setup();
 
-	for (int i = 0; i<selection_list.size(); i++) {
-		auto &selection = selection_list[i];
-		std::string fn = "selection_mc_" + std::to_string(i) + ".h5";
-		H5::H5File file(fn,H5F_ACC_TRUNC);
+	for(beta=0.1;beta<=2;beta+=temp){
+		std::cout<<"beta="<< beta <<std::endl;
+		clear_struct();
+		calc_cij_mag();
+		normalize();
+		std::string Beta=format(beta,4);
+		std::string h=format(field,4);
+		for (int i = 0; i<selection_list.size(); i++) {
 
-		hsize_t l = pair_num;
-		H5::DataSet ds = H5::DataSet(file.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-		ds.write(selection.aC.data(),H5::PredType::NATIVE_DOUBLE);
+			auto &selection = selection_list[i];
+			std::string fn = "selection_mc/l" +std::to_string(linear_size)+"Beta"+(Beta)+"h"+(h)+"_"+ std::to_string(i) + ".h5";
+			H5::H5File file(fn,H5F_ACC_TRUNC);
 
-		l = chosen_num;
-		ds = H5::DataSet(file.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
-		ds.write(selection.mag.data(),H5::PredType::NATIVE_DOUBLE);
+			hsize_t l = pair_num;
+			H5::DataSet ds = H5::DataSet(file.createDataSet("c",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+			ds.write(selection.aC.data(),H5::PredType::NATIVE_DOUBLE);
+			
+			l = chosen_num;
+			ds = H5::DataSet(file.createDataSet("m",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+			ds.write(selection.M.data(),H5::PredType::NATIVE_DOUBLE);
 
-		ds = H5::DataSet(file.createDataSet("chosen_indices",H5::PredType::NATIVE_INT,H5::DataSpace(1,&l)));
-		ds.write(selection.chosen_indices.data(), H5::PredType::NATIVE_INT);
-	}
+
+			ds = H5::DataSet(file.createDataSet("chosen_indices",H5::PredType::NATIVE_INT,H5::DataSpace(1,&l)));
+			ds.write(selection.chosen_indices.data(), H5::PredType::NATIVE_INT);
+
+		}
+		std::string fn = "selection_mc/config_l" +std::to_string(linear_size)+"Beta"+Beta+"h"+h+"_"+ std::to_string(i) + ".h5";
+		H5::H5File file2(fn,H5F_ACC_TRUNC);
+
+		hsize_t l = Statics_list.config.size();
+		H5::DataSet ds = H5::DataSet(file2.createDataSet("config",H5::PredType::NATIVE_INT,H5::DataSpace(1,&l)));
+		ds.write(Statics_list.config.data(),H5::PredType::NATIVE_INT);
+
+		l= Statics_list.Mtotal.size();
+		ds = H5::DataSet(file2.createDataSet("Mtotal",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(Statics_list.Mtotal.data(),H5::PredType::NATIVE_DOUBLE);
+
+		l= Statics_list.ME.size();
+		ds = H5::DataSet(file2.createDataSet("ME",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(Statics_list.ME.data(),H5::PredType::NATIVE_DOUBLE);
+		
+		l= Statics_list.E.size();
+		ds = H5::DataSet(file2.createDataSet("E",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(Statics_list.E.data(),H5::PredType::NATIVE_DOUBLE);
+		
+		l= Statics_list.E2.size();
+		ds = H5::DataSet(file2.createDataSet("E2",H5::PredType::NATIVE_DOUBLE,H5::DataSpace(1,&l)));
+		ds.write(Statics_list.E2.data(),H5::PredType::NATIVE_DOUBLE);
+}
 	return 0;
 }

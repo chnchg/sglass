@@ -33,6 +33,8 @@ std::vector<double> j; ///<Pair coupling, condensed format
 double beta; ///<Inverse temperature
 // state
 std::vector<int> spin; ///<Spin states 
+// config
+std::vector<int> config;
 // RNG
 std::mt19937 rng; ///<Random number generator
 ///@}
@@ -219,6 +221,12 @@ void save_data(std::string fn = "result_file.h5")
     save_1d_array(g,"aS",aS);
     save_1d_array(g,"aC",aC);
 }
+std::string format(float f, int digits) {
+    std::ostringstream ss;
+    ss.precision(digits);
+    ss << f;
+    return ss.str();
+}
 /// Main function for performing simulation
 int main(int argc, char ** argv)
 {
@@ -258,8 +266,26 @@ int main(int argc, char ** argv)
 	for (auto i = 0;i<warmup;i++) mc_step();
 	while (cnt<count) {
 		mc_step();
+		for (long unsigned int i=0;i<spin.size();i++){
+			config.push_back(spin[i]);
+		}
+		
 		measure();
 	}
 	save_data(oufn);
+
+	std::string Beta=format(beta,4);
+	std::string fn = "output/output_config_Beta"+Beta+"_10.h5";
+	H5::H5File file(fn,H5F_ACC_TRUNC);
+
+
+	hsize_t l=config.size();
+
+
+	H5::DataSet ds = H5::DataSet(file.createDataSet("config",H5::PredType::NATIVE_INT,H5::DataSpace(1,&l)));
+	ds.write(config.data(),H5::PredType::NATIVE_INT);
+
 	return 0;
+	
+
 }
