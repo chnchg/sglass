@@ -30,3 +30,11 @@ ising_mc_cb: ising_mc_cb.o
 	-L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 \
 	-lpthread -lsz -lz -ldl -lm -laec 
 
+all: ising_mc_cov
+ising_mc_cov.o: ising_mc_cov.cpp 
+	c++ -I/usr/include/hdf5/serial -c ising_mc_cov.cpp -g -O3  -static
+ising_mc_cov: ising_mc_cov.o
+	c++ -I/usr/include/hdf5/serial ising_mc_cov.o -o ising_mc_cov -g -O3 -static \
+	-L/usr/lib/x86_64-linux-gnu/hdf5/serial -lhdf5_hl_cpp -lhdf5_cpp -lhdf5_hl -lhdf5 \
+	-lpthread -lsz -lz -ldl -lm -laec 
+
